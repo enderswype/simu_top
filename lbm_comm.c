@@ -183,35 +183,6 @@ void lbm_comm_sync_ghosts_horizontal( lbm_comm_t * mesh, Mesh *mesh_to_process, 
  * @param mesh_comm MeshComm à utiliser
  * @param mesh_to_process Mesh a utiliser lors de l'échange des mailles fantomes
 **/
-void lbm_comm_sync_ghosts_diagonal( lbm_comm_t * mesh, Mesh *mesh_to_process, lbm_comm_type_t comm_type, int target_rank, int x ,int y, int flag)
-{
-	//vars
-	MPI_Status status;
-
-	//if target is -1, no comm
-	if (target_rank == -1)
-		return;
-
-	switch (comm_type)
-	{
-		case COMM_SEND:
-			MPI_Send( Mesh_get_cell( mesh_to_process, x, y ), DIRECTIONS, MPI_DOUBLE, target_rank, flag, MPI_COMM_WORLD);
-			break;
-		case COMM_RECV:
-			MPI_Recv( Mesh_get_cell( mesh_to_process, x, y ), DIRECTIONS, MPI_DOUBLE, target_rank, flag, MPI_COMM_WORLD, &status);
-			break;
-		default:
-			fatal("Unknown type of communication.");
-	}
-}
-
-
-/*******************  FUNCTION  *********************/
-/**
- * Debut de communications asynchrones
- * @param mesh_comm MeshComm à utiliser
- * @param mesh_to_process Mesh a utiliser lors de l'échange des mailles fantomes
-**/
 void lbm_comm_sync_ghosts_vertical( lbm_comm_t * mesh, Mesh *mesh_to_process, lbm_comm_type_t comm_type, int target_rank, int y , int flag)
 {
 	//vars
@@ -238,11 +209,40 @@ void lbm_comm_sync_ghosts_vertical( lbm_comm_t * mesh, Mesh *mesh_to_process, lb
 }
 
 /*******************  FUNCTION  *********************/
+/**
+ * Debut de communications asynchrones
+ * @param mesh_comm MeshComm à utiliser
+ * @param mesh_to_process Mesh a utiliser lors de l'échange des mailles fantomes
+**/
+void lbm_comm_sync_ghosts_diagonal( lbm_comm_t * mesh, Mesh *mesh_to_process, lbm_comm_type_t comm_type, int target_rank, int x ,int y, int flag)
+{
+	//vars
+	MPI_Status status;
+
+	//if target is -1, no comm
+	if (target_rank == -1)
+		return;
+
+	switch (comm_type)
+	{
+		case COMM_SEND:
+			MPI_Send( Mesh_get_cell( mesh_to_process, x, y ), DIRECTIONS, MPI_DOUBLE, target_rank, flag, MPI_COMM_WORLD);
+			break;
+		case COMM_RECV:
+			MPI_Recv( Mesh_get_cell( mesh_to_process, x, y ), DIRECTIONS, MPI_DOUBLE, target_rank, flag, MPI_COMM_WORLD, &status);
+			break;
+		default:
+			fatal("Unknown type of communication.");
+	}
+}
+
+
+/*******************  FUNCTION  *********************/
 void lbm_comm_ghost_exchange(lbm_comm_t * mesh, Mesh *mesh_to_process )
 {
 	//vars
 	int rank;
-	double a, b;
+	double a = 0, b = 0;
 	int time = 0;
 
 	//get rank

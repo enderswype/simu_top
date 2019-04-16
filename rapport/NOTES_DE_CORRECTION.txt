@@ -342,3 +342,108 @@ et les messages :
 7 : 0.000013
 8 : 0.001011
 
+abdandon de l'amelioration en messages, ajout de OpenMP avec #pragma omp parallel for au dessus de la boucle de calcul des collisions
+
+	#pragma omp parallel for private(j) schedule(dynamic)
+	for( i = 1 ; i < mesh_in->width - 1 ; i++ )
+	{
+		for( j = 1 ; j < mesh_in->height - 1 ; j++)
+			compute_cell_collision(Mesh_get_cell(mesh_out, i, j),Mesh_get_cell(mesh_in, i, j));
+	}
+
+Pour 1 seul processus, on passe de :
+
+************************************************
+temps total :          4.137447 
+load configuration :   0.010482 %
+init struct :          0.002587 %
+open file :            0.044417 %
+setup init cond :      3.348713 %
+write init cond :      0.371402 %
+special cell :         1.206192 %
+collision :            62.459369 %
+ghost cells exchange : 0.018930 %
+propagation :          32.091007 %
+saving :               0.394918 %
+************************************************
+
+à
+
+************************************************
+temps total :          2.787298 
+load configuration :   0.017681 %
+init struct :          0.007408 %
+open file :            0.064350 %
+setup init cond :      5.086249 %
+write init cond :      0.543899 %
+special cell :         1.838518 %
+collision :            43.827617 %
+ghost cells exchange : 0.025319 %
+propagation :          47.905883 %
+saving :               0.602244 %
+************************************************
+
+la meilleur facon de lancer le programme est donc maintenant :
+
+ OMP_NUM_THREADS=x mpirun -np y ./lbm
+
+ tel que x*y = nproc
+
+ apres differents tests sur mon toasters avec le nombre d'iterations a 1000, voila les resultats :
+
+
+
+ OMP_NUM_THREADS=1 mpirun -np 4 ./lbm
+
+************************************************
+temps total :          23.691282 
+load configuration :   0.001514 %
+init struct :          0.001461 %
+open file :            0.008381 %
+setup init cond :      0.195648 %
+write init cond :      0.189497 %
+special cell :         1.108262 %
+collision :            37.115415 %
+ghost cells exchange : 38.213737 %
+propagation :          20.602259 %
+saving :               2.557526 %
+************************************************
+
+
+
+
+OMP_NUM_THREADS=4 mpirun -np 1 ./lbm
+
+************************************************
+temps total :          27.329592 
+load configuration :   0.001740 %
+init struct :          0.000427 %
+open file :            0.036297 %
+setup init cond :      0.866129 %
+write init cond :      0.180184 %
+special cell :         1.930838 %
+collision :            45.415415 %
+ghost cells exchange : 0.035338 %
+propagation :          50.292201 %
+saving :               1.230655 %
+************************************************
+
+
+
+OMP_NUM_THREADS=2 mpirun -np 2 ./lbm
+
+************************************************
+temps total :          21.524455 
+load configuration :   0.001956 %
+init struct :          0.000767 %
+open file :            0.046348 %
+setup init cond :      0.340299 %
+write init cond :      0.118152 %
+special cell :         1.401843 %
+collision :            52.482672 %
+ghost cells exchange : 8.606742 %
+propagation :          34.764682 %
+saving :               2.166327 %
+************************************************
+
+ces tests ont eté fait avec le omp parallel for ouvert et refermé a chaque itération, prochaine etape, ouvrir une grande zone et mettre des omp single partout sauf à la fonction collision

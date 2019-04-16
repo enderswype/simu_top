@@ -182,7 +182,8 @@ int main(int argc, char * argv[])
 	MPI_Barrier(MPI_COMM_WORLD);
 
 	//time steps
-
+//	#pragma omp parallel
+{
 	double special = 0, colision = 0, ghost = 0, propage = 0, save = 0;
 	for ( i = 1 ; i < ITERATIONS ; i++ )
 	{
@@ -255,19 +256,19 @@ int main(int argc, char * argv[])
 		double total = freemem + close + loadconf + initstruct + openfile + condinit + writecond + special + colision + ghost + propage + save;
 		printf("************************************************\n");
 		printf("temps total :          %lf \n", total);
-		printf("load configuration :   %lf %\n", 100* loadconf/total);
-		printf("init struct :          %lf %\n", 100* initstruct/total);
-		printf("open file :            %lf %\n", 100* openfile/total);
-		printf("setup init cond :      %lf %\n", 100* condinit/total);
-		printf("write init cond :      %lf %\n", 100* writecond/total);
-		printf("special cell :         %lf %\n", 100* special/total);
-		printf("collision :            %lf %\n", 100* colision/total);
-		printf("ghost cells exchange : %lf %\n", 100* ghost/total);
-		printf("propagation :          %lf %\n", 100* propage/total);
-		printf("saving :               %lf %\n", 100* save/total);
+		printf("load configuration :   %lf %%\n", 100* loadconf/total);
+		printf("init struct :          %lf %%\n", 100* initstruct/total);
+		printf("open file :            %lf %%\n", 100* openfile/total);
+		printf("setup init cond :      %lf %%\n", 100* condinit/total);
+		printf("write init cond :      %lf %%\n", 100* writecond/total);
+		printf("special cell :         %lf %%\n", 100* special/total);
+		printf("collision :            %lf %%\n", 100* colision/total);
+		printf("ghost cells exchange : %lf %%\n", 100* ghost/total);
+		printf("propagation :          %lf %%\n", 100* propage/total);
+		printf("saving :               %lf %%\n", 100* save/total);
 		printf("************************************************\n");
 	}
-
+}
 	//close MPI
 	MPI_Finalize();
 

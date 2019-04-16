@@ -5,8 +5,8 @@ RM=rm -f
 MAKEDEPEND=makedepend
 
 #flags
-CFLAGS=-Wall -g -O3
-LDFLAGS=-lm -O3
+CFLAGS=-Wall -g -O3 -fopenmp
+LDFLAGS=-lm -O3 -fopenmp
 
 #Files
 LBM_SOURCES=main.c lbm_phys.c lbm_init.c lbm_struct.c lbm_comm.c lbm_config.c
