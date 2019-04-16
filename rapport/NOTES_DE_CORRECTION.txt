@@ -1,0 +1,344 @@
+CONFIGURATION POUR TOUT LES TESTS :
+
+*************************************************************************
+iterations           = 100
+width                = 800
+height               = 160
+#obstacle_r           = 
+#obstacle_x           = 
+#obstacle_y           = 
+reynolds             = 100
+inflow_max_velocity  = 0.100000
+inflow_max_velocity  = 0.100000
+output_filename      = resultat.raw
+write_interval       = 10
+*************************************************************************
+
+
+
+probleme de segfault :
+-dans lbm_struct.c 
+
+	//alloc cells memory
+	//mesh->cells = malloc( width * height  * DIRECTIONS * sizeof( double ) );
+	mesh->cells = NULL;
+
+	//errors
+	/*if( mesh->cells == NULL )
+	{
+		perror( "malloc" );
+		abort();
+	}*/
+
+il faut retirer les balises de commentaire autour de l'allocation mémoire et autour du test si ca a reussi
+
+	//alloc cells memory
+	mesh->cells = malloc( width * height  * DIRECTIONS * sizeof( double ) );
+	mesh->cells = NULL;
+
+	//errors
+	if( mesh->cells == NULL )
+	{
+		perror( "malloc" );
+		abort();
+	}
+
+et puis il faut aussi virer la ligne qui set mesh->cells a NULL car ca annul tout simplement de malloc de la ligne du dessus
+
+	//alloc cells memory
+	mesh->cells = malloc( width * height  * DIRECTIONS * sizeof( double ) );
+
+	//errors
+	if( mesh->cells == NULL )
+	{
+		perror( "malloc" );
+		abort();
+	}
+
+
+apres ces modifications, ca compile, ca run, mais c'est ultra long, 16 000 etapes qui s'effectuent 1 par secondes envrion .. surtout sur mon grille pain, optimisation incoming !!
+
+apres avoir changé le fichier de config et reduit le nombre d'iterations a seulement 160, on a un deadlock at l'avant derniere iteration, embetant (iterations max pour le test : 160, deadlock a 159) (deadlock a iterations - 1)
+
+Il y a un deadlock a cose de la fonction close_file
+
+	if( rank == RANK_MASTER && fp != NULL)
+	{
+		close_file(fp);
+	}
+
+seul le processus 0 appelle cette fonction, or, la fonction est la suivante :
+
+	void close_file(FILE* fp){
+		//wait all before closing
+		MPI_Barrier(MPI_COMM_WORLD);
+		//close file
+		fclose(fp);
+	}
+
+la barrier est problematique, on veux fixer ce probleme comme ca :
+
+	void close_file(FILE* fp){
+		//close file
+		fclose(fp);
+	}
+
+&&
+
+	if( rank == RANK_MASTER && fp != NULL)
+	{
+		close_file(fp);
+	}
+
+ou comme ca :
+
+	void close_file(FILE* fp){
+		//close file
+		fclose(fp);
+	}
+
+&&
+
+	MPI_Barrier(MPI_COMM_WORLD);
+	if( rank == RANK_MASTER && fp != NULL)
+	{
+		close_file(fp);
+	}
+
+On a maintenant pouvoir se penchant sur l'amelioration de performances maintenant que le programme sort des images et résultat que l'on peut visualiser, plus d'une seconde par image, inacceptable
+
+bien essayé, mais ca marche pas avec moi
+identification du probleme avec profilage manuel a base de printf et de MPI_Wtime pour determiner ou et dans quoi on passe le plus de temps.
+
+//wait for IO to finish, VERY important, do not remove.
+FLUSH_INOUT();
+
+qui renvoi vers :
+
+#define FLUSH_INOUT() __FLUSH_INOUT__
+#define __FLUSH_INOUT__ concat(s,l,e,e,p)(1)
+
+correction :
+
+//Do sleep 1, VERY not important, such useless, much time consumming, must comment !
+//FLUSH_INOUT();
+
+maintenant que le programme est capable de sortir un résultat exploitable, nous allons (avec des printf partout) determiner quelles parties consomment le plus de temps afin des les optimiser en priorité :
+
+voila ce que je fais print au processus 0 :
+
+************************************************
+temps total :          21.620281 
+load configuration :   0.001781 %
+init struct :          0.000803 %
+open file :            0.048955 %
+setup init cond :      0.528401 %
+write init cond :      0.595204 %
+special cell :         0.740659 %
+collision :            43.448579 %
+ghost cells exchange : 26.263924 %
+propagation :          22.604232 %
+saving :               5.758988 %
+************************************************
+
+les principaux points a ameliorer sont le calcul des colisions, l'echange de donnée pour les mailles fantomes et la propagation des informations
+
+premier changement, echanger les messages en : la moitier envoi, l'autre recoit, et inversement, retirer les barriere et mettre des messages avec des flags differents en fonction de la provenance comme ca on n'a pas de melange des messages.
+
+	if(rank%2 == 0)
+	{
+		lbm_comm_sync_ghosts_horizontal(mesh,mesh_to_process,COMM_SEND,mesh->right_id,mesh->width - 2, 1);
+		lbm_comm_sync_ghosts_horizontal(mesh,mesh_to_process,COMM_RECV,mesh->right_id,mesh->width - 1, 2);
+		lbm_comm_sync_ghosts_vertical(mesh,mesh_to_process,COMM_RECV,mesh->bottom_id,mesh->height - 1, 4);
+		lbm_comm_sync_ghosts_vertical(mesh,mesh_to_process,COMM_SEND,mesh->bottom_id,mesh->height - 2, 3);
+		lbm_comm_sync_ghosts_diagonal(mesh,mesh_to_process,COMM_SEND,mesh->corner_id[CORNER_TOP_LEFT],1,1, 5);
+		lbm_comm_sync_ghosts_diagonal(mesh,mesh_to_process,COMM_RECV,mesh->corner_id[CORNER_TOP_LEFT],0,0, 8);
+		lbm_comm_sync_ghosts_diagonal(mesh,mesh_to_process,COMM_SEND,mesh->corner_id[CORNER_BOTTOM_LEFT],1,mesh->height - 2, 6);
+		lbm_comm_sync_ghosts_diagonal(mesh,mesh_to_process,COMM_RECV,mesh->corner_id[CORNER_BOTTOM_LEFT],0,mesh->height - 1, 7);
+	}
+	else
+	{
+		lbm_comm_sync_ghosts_horizontal(mesh,mesh_to_process,COMM_RECV,mesh->left_id,0, 1);
+		lbm_comm_sync_ghosts_horizontal(mesh,mesh_to_process,COMM_SEND,mesh->left_id,1, 2);
+		lbm_comm_sync_ghosts_vertical(mesh,mesh_to_process,COMM_SEND,mesh->top_id,1, 4);
+		lbm_comm_sync_ghosts_vertical(mesh,mesh_to_process,COMM_RECV,mesh->top_id,0, 3);
+		lbm_comm_sync_ghosts_diagonal(mesh,mesh_to_process,COMM_RECV,mesh->corner_id[CORNER_BOTTOM_RIGHT],mesh->width - 1,mesh->height - 1, 5);
+		lbm_comm_sync_ghosts_diagonal(mesh,mesh_to_process,COMM_SEND,mesh->corner_id[CORNER_BOTTOM_RIGHT],mesh->width - 2,mesh->height - 2, 8);
+		lbm_comm_sync_ghosts_diagonal(mesh,mesh_to_process,COMM_RECV,mesh->corner_id[CORNER_TOP_RIGHT],mesh->width - 1,0, 6);
+		lbm_comm_sync_ghosts_diagonal(mesh,mesh_to_process,COMM_SEND,mesh->corner_id[CORNER_TOP_RIGHT],mesh->width - 2,1, 7);
+	}
+
+prochaine etape, essayer de transformer tout les messages Send end Isend et Rcv en Ircv.
+essai infructueux pour le moment, essayer d'optimiser "propagation plutot"
+
+dans le parcous de la double boucle de "propagation" si on inverse les arguments de 2 for imbriqué, on optimise l'accés mémoire et donc la vitesse du bousin.
+
+on passe de ca :
+
+	for ( j = 0 ; j < mesh_out->height ; j++)
+	{
+		for ( i = 0 ; i < mesh_out->width; i++)
+		{
+
+à ca :
+
+	for (i = 0 ; i < mesh_out->width; i++ )
+	{
+		for (j = 0 ; j < mesh_out->height ; j++ )
+		{
+
+au niveau des temps : 
+
+************************************************
+temps total :          11.362060 
+load configuration :   0.004325 %
+init struct :          0.001106 %
+open file :            0.034199 %
+setup init cond :      0.998688 %
+write init cond :      0.791452 %
+special cell :         1.641796 %
+collision :            52.571514 %
+ghost cells exchange : 10.653794 %
+propagation :          26.554366 %
+saving :               6.733690 %
+************************************************
+
+à
+
+************************************************
+temps total :          11.625539 
+load configuration :   0.004216 %
+init struct :          0.001657 %
+open file :            0.058776 %
+setup init cond :      1.048286 %
+write init cond :      1.350129 %
+special cell :         1.861357 %
+collision :            62.195085 %
+ghost cells exchange : 13.988072 %
+propagation :          12.803349 %
+saving :               6.674639 %
+************************************************
+
+on a donc divisé par 2 le temps passé dans la fonction de propagation
+
+On peux appliquer le meme changement dans la double boucle imbriquée de la fonction "collision" passant de :
+
+
+	for( j = 1 ; j < mesh_in->height - 1 ; j++)
+		for( i = 1 ; i < mesh_in->width - 1 ; i++ )
+
+à
+
+	for( i = 1 ; i < mesh_in->width - 1 ; i++ )
+		for( j = 1 ; j < mesh_in->height - 1 ; j++)
+
+et on diminue le temps total d'execution pour arriver à :
+
+************************************************
+temps total :          9.390086 
+load configuration :   0.005566 %
+init struct :          0.001600 %
+open file :            0.187592 %
+setup init cond :      1.956683 %
+write init cond :      0.904827 %
+special cell :         0.603419 %
+collision :            55.276606 %
+ghost cells exchange : 16.661668 %
+propagation :          16.081894 %
+saving :               8.302007 %
+************************************************
+
+Amelioration considerable en rajoutant 3 caractères dans la makefile, -O3 en flag de compilation et on passe directement a ça
+
+************************************************
+temps total :          3.760600 
+load configuration :   0.090337 %
+init struct :          0.006708 %
+open file :            0.175083 %
+setup init cond :      1.144455 %
+write init cond :      1.101248 %
+special cell :         0.883549 %
+collision :            23.003078 %
+ghost cells exchange : 54.247644 %
+propagation :          11.051640 %
+saving :               7.885864 %
+************************************************
+
+temps divisé pas 3 environ
+
+/!\ erreur reperée, je ne sais plus ou mais l'image n'etait plus correct, les echanges de message pour les mailles fantomes sont incorrect, repassons aux echanges de messages originaux et nous avons les stats suivantes :
+
+************************************************
+temps total :          6.460315 
+load configuration :   0.045866 %
+init struct :          0.006735 %
+open file :            0.101832 %
+setup init cond :      0.586717 %
+write init cond :      0.804568 %
+special cell :         0.206163 %
+collision :            11.998073 %
+ghost cells exchange : 75.082733 %
+propagation :          6.627244 %
+saving :               4.093938 %
+************************************************
+
+retour aux mesures de temps de chaque message
+on a ça 
+
+message 1 : 0.009184
+message 2 : 0.000019
+message 3 : 0.039667
+message 4 : 0.025316
+message 5 : 0.000018
+message 6 : 0.000993
+message 7 : 0.005770
+message 8 : 0.000040
+
+il faut donc radicalement changer la facon dont on echange les messages verticalement, pour se faire on va echanger les info par ligne entiere et non par cellule individuelle, on passe de ca
+
+			for ( x = 1 ; x < mesh_to_process->width - 2 ; x++)
+				for ( k = 0 ; k < DIRECTIONS ; k++)
+					MPI_Send( &Mesh_get_cell(mesh_to_process, x, y)[k], 1, MPI_DOUBLE, target_rank, flag, MPI_COMM_WORLD);
+			break;
+		case COMM_RECV:
+			for ( x = 1 ; x < mesh_to_process->width - 2 ; x++)
+				for ( k = 0 ; k < DIRECTIONS ; k++)
+					MPI_Recv( &Mesh_get_cell(mesh_to_process, x, y)[k], DIRECTIONS, MPI_DOUBLE, target_rank, flag, MPI_COMM_WORLD,&status);
+
+a ca
+
+		case COMM_SEND:
+			for ( x = 1 ; x < mesh_to_process->width - 2 ; x++)
+				MPI_Send( Mesh_get_cell(mesh_to_process, x, y), DIRECTIONS, MPI_DOUBLE, target_rank, flag, MPI_COMM_WORLD);
+			break;
+		case COMM_RECV:
+			for ( x = 1 ; x < mesh_to_process->width - 2 ; x++)
+				MPI_Recv( Mesh_get_cell(mesh_to_process, x, y), DIRECTIONS, MPI_DOUBLE, target_rank, flag, MPI_COMM_WORLD,&status);
+
+le temps evolue comme suit : 
+
+************************************************
+temps total :          2.930199 
+load configuration :   0.011953 %
+init struct :          0.004898 %
+open file :            0.187459 %
+setup init cond :      1.290741 %
+write init cond :      2.058942 %
+special cell :         0.477854 %
+collision :            32.977607 %
+ghost cells exchange : 31.415607 %
+propagation :          18.293135 %
+saving :               12.013104 %
+************************************************
+
+et les messages :
+
+1 : 0.001004
+2 : 0.000016
+3 : 0.003800
+4 : 0.007093
+5 : 0.000017
+6 : 0.001473
+7 : 0.000013
+8 : 0.001011
+
