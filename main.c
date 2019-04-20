@@ -234,10 +234,8 @@ int main(int argc, char * argv[])
 
 	MPI_Barrier(MPI_COMM_WORLD);
 	a = MPI_Wtime();
-	if( rank == RANK_MASTER && fp != NULL)
-	{
+	if(rank == RANK_MASTER)
 		close_file(fp);
-	}
 	z = MPI_Wtime();
 	close = z - a;
 
