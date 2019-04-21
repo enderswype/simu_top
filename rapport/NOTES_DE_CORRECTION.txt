@@ -43,7 +43,7 @@ il faut retirer les balises de commentaire autour de l'allocation mémoire et au
 		abort();
 	}
 
-et puis il faut aussi virer la ligne qui set mesh->cells a NULL car ca annul tout simplement de malloc de la ligne du dessus
+et puis il faut aussi virer la ligne qui set mesh->cells a NULL car ca annule tout simplement de malloc de la ligne du dessus
 
 	//alloc cells memory
 	mesh->cells = malloc( width * height  * DIRECTIONS * sizeof( double ) );
@@ -447,3 +447,53 @@ saving :               2.166327 %
 ************************************************
 
 ces tests ont eté fait avec le omp parallel for ouvert et refermé a chaque itération, prochaine etape, ouvrir une grande zone et mettre des omp single partout sauf à la fonction collision
+
+
+
+
+avec guided :
+
+OMP_NUM_THREADS=4 mpirun -np 1 ./lbm
+************************************************
+temps total :          28.293804 
+load configuration :   0.001793 %
+init struct :          0.000513 %
+open file :            0.005450 %
+setup init cond :      0.558563 %
+write init cond :      0.062944 %
+special cell :         1.912263 %
+collision :            46.380010 %
+ghost cells exchange : 0.030502 %
+propagation :          49.810435 %
+saving :               1.229864 %
+************************************************
+
+OMP_NUM_THREADS=1 mpirun -np 4 ./lbm
+************************************************
+temps total :          29.263993 
+load configuration :   0.001379 %
+init struct :          0.000650 %
+open file :            0.042849 %
+setup init cond :      0.131170 %
+write init cond :      0.413520 %
+special cell :         0.785256 %
+collision :            31.718765 %
+ghost cells exchange : 46.790905 %
+propagation :          17.726802 %
+saving :               2.383022 %
+************************************************
+
+OMP_NUM_THREADS=2 mpirun -np 2 ./lbm
+************************************************
+temps total :          21.944575 
+load configuration :   0.001871 %
+init struct :          0.000846 %
+open file :            0.061237 %
+setup init cond :      0.334024 %
+write init cond :      0.124351 %
+special cell :         1.377122 %
+collision :            52.924361 %
+ghost cells exchange : 8.321418 %
+propagation :          34.603581 %
+saving :               2.239196 %
+************************************************

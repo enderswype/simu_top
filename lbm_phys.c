@@ -317,7 +317,7 @@ void collision(Mesh * mesh_out,const Mesh * mesh_in)
 	assert(mesh_in->height == mesh_out->height);
 
 	//loop on all inner cells
-	#pragma omp parallel for private(j) schedule(dynamic)
+	#pragma omp parallel for private(j) schedule(guided)
 	for( i = 1 ; i < mesh_in->width - 1 ; i++ )
 	{
 		for( j = 1 ; j < mesh_in->height - 1 ; j++)
